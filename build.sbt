@@ -10,7 +10,7 @@ enablePlugins(DockerPlugin)
 
 enablePlugins(SbtNativePackager)
 
-
+dockerExposedPorts += 9000
 
 libraryDependencies ++= Seq(
   jdbc,
