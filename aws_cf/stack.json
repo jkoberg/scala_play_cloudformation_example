@@ -1,0 +1,190 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Example stack for Play! + Docker + EB + Logging",
+  "Parameters": {
+
+    "EC2KeypairName": {
+      "Type": "String",
+      "Description": "Key for instance logins",
+      "Default": "wowza-ec2"
+    },
+    "EC2beanstalkType": {
+      "Type": "String",
+      "Description": "Instance type for Elastic Beanstalk (Broadcast app)",
+      "Default": "c4.large"
+    },
+    "dockerImageBucket": {
+      "Type": "String",
+      "Description": "S3 bucket for docker (Broadcast app) images",
+      "Default": "playon-dockerimages"
+    },
+    "dockerImageFile": {
+      "Type": "String",
+      "Description": "S3 filename for docker (Broadcast app) image",
+      "Default": "broadcast-manager-docker.zip"
+    },
+    "dockerContainerType": {
+      "Type": "String",
+      "Description": "see http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html#concepts.platforms.docker",
+      "Default": "64bit Amazon Linux 2015.03 v1.4.0 running Docker 1.6.0"
+    }
+  },
+  "Resources": {
+
+    "WowzaEC2InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "root",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "*",
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "WowzaEC2InstanceIAM": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{"Ref": "WowzaEC2InstanceRole"}]
+      }
+    },
+    "broadcastApiApplication": {
+      "Type": "AWS::ElasticBeanstalk::Application",
+      "Properties": {
+        "Description": "PlayOnSports Broadcast Application"
+      }
+    },
+    "broadcastApiApplicationVersion": {
+      "Type": "AWS::ElasticBeanstalk::ApplicationVersion",
+      "Properties": {
+        "ApplicationName": {"Ref": "broadcastApiApplication"},
+        "Description": "PlayOnSports Broadcast Application Version",
+        "SourceBundle": {
+          "S3Bucket": {"Ref": "dockerImageBucket"},
+          "S3Key": {"Ref": "dockerImageFile"}
+        }
+      }
+    },
+    "broadcastApiConfigurationTemplate": {
+      "Type": "AWS::ElasticBeanstalk::ConfigurationTemplate",
+      "Properties": {
+        "ApplicationName": {"Ref": "broadcastApiApplication"},
+        "Description": "PlayOnSports Broadcast Configuration Template",
+        "SolutionStackName": {"Ref": "dockerContainerType"},
+        "OptionSettings": [
+          {
+            "Namespace": "aws:autoscaling:launchconfiguration",
+            "OptionName": "IamInstanceProfile",
+            "Value": {"Ref": "WowzaEC2InstanceIAM"}
+          },
+          {
+            "Namespace": "aws:autoscaling:launchconfiguration",
+            "OptionName": "EC2KeyName",
+            "Value": {"Ref": "EC2KeypairName"}
+          },
+          {
+            "Namespace": "aws:autoscaling:launchconfiguration",
+            "OptionName": "InstanceType",
+            "Value": {"Ref": "EC2beanstalkType"}
+          },
+          {
+            "Namespace": "aws:autoscaling:asg",
+            "OptionName": "MinSize",
+            "Value": "1"
+          },
+          {
+            "Namespace": "aws:autoscaling:asg",
+            "OptionName": "MaxSize",
+            "Value": "1"
+          },
+          {
+            "Namespace": "aws:autoscaling:asg",
+            "OptionName": "Cooldown",
+            "Value": "360"
+          },
+          {
+            "Namespace": "aws:autoscaling:trigger",
+            "OptionName": "MeasureName",
+            "Value": "CPUUtilization"
+          },
+          {
+            "Namespace": "aws:autoscaling:trigger",
+            "OptionName": "Statistic",
+            "Value": "Average"
+          }
+          {
+            "Namespace": "aws:elasticbeanstalk:environment",
+            "OptionName": "EnvironmentType",
+            "Value": "LoadBalanced"
+          },
+          {
+            "Namespace": "aws:elb:policies",
+            "OptionName": "Stickiness Policy",
+            "Value": "true"
+          },
+          {
+            "Namespace": "aws:elasticbeanstalk:hostmanager",
+            "OptionName": "LogPublicationControl",
+            "Value": "true"
+          },
+          {
+            "Namespace": "aws:ec2:vpc",
+            "OptionName": "VPCId",
+            "Value": {"Ref": "VPC"}
+          },
+          {
+            "Namespace": "aws:ec2:vpc",
+            "OptionName": "Subnets",
+            "Value": {"Ref": "PublicSubnet"}
+          },
+          {
+            "Namespace": "aws:ec2:vpc",
+            "OptionName": "ELBSubnets",
+            "Value": {"Ref": "PublicSubnet"}
+          },
+          {
+            "Namespace": "aws:ec2:vpc",
+            "OptionName": "AssociatePublicIpAddress",
+            "Value": "true"
+          }
+        ]
+      }
+    },
+    "broadcastApiEnvironment": {
+      "Type": "AWS::ElasticBeanstalk::Environment",
+      "Properties": {
+        "Description": "PlayOnSports Broadcast Environment",
+        "ApplicationName": {"Ref": "broadcastApiApplication"},
+        "TemplateName": {"Ref": "broadcastApiConfigurationTemplate"},
+        "VersionLabel": {"Ref": "broadcastApiApplicationVersion"}
+      }
+    }
+
+
+  }
+
+
+}
